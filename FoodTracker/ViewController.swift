@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import CoreData
 
 class ViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate, UISearchControllerDelegate, UISearchResultsUpdating {
     
@@ -16,6 +17,9 @@ class ViewController: UIViewController, UITableViewDataSource, UITableViewDelega
     var scopeButtonTitles = ["Recommended", "Search Results", "Saved"]
     var jsonResponse:NSDictionary!
     var apiSearchFoods:[(name:String, idValue:String)] = []
+    var filteredFavoritedUSDAItems:[USDAItem] = []
+    var datacontroller = DataController()
+    var favoritedUSDAItems:[USDAItem] = []
     
     let kAppId = "825b61b4"
     let kAppKey = "9b6fa052b6ee832ebe2aa312e82afdcf"
@@ -43,7 +47,8 @@ class ViewController: UIViewController, UITableViewDataSource, UITableViewDelega
         super.didReceiveMemoryWarning()
         // Dispose of any resources that can be recreated.
     }
-    // Mark - UItableViewDataSource
+   
+    // MARK: - UItableViewDataSource
     
     func tableView(tableView: UITableView, cellForRowAtIndexPath indexPath: NSIndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCellWithIdentifier("Cell") as UITableViewCell
@@ -62,7 +67,7 @@ class ViewController: UIViewController, UITableViewDataSource, UITableViewDelega
                 foodName = apiSearchFoods[indexPath.row].name
             }
             else {
-                foodName = ""
+                foodName = self.favoritedUSDAItems[indexPath.row].name
             }
         
         cell.textLabel?.text = foodName
@@ -88,11 +93,15 @@ class ViewController: UIViewController, UITableViewDataSource, UITableViewDelega
             return self.apiSearchFoods.count
         }
         else {
-            return 0
+            if self.searchController.active {
+                return self.filteredFavoritedUSDAItems.count
+            }
+            
+            return favoritedUSDAItems.count
         }
    }
     
-    // Mark - UITableViewDelegate
+    // MARK: - UITableViewDelegate
     
     func tableView(tableView: UITableView, didSelectRowAtIndexPath indexPath: NSIndexPath) {
         let selectedSopeButtonIndex = self.searchController.searchBar.selectedScopeButtonIndex
@@ -110,14 +119,15 @@ class ViewController: UIViewController, UITableViewDataSource, UITableViewDelega
             makeRequest(searchFoodName)
         }
         else if selectedSopeButtonIndex == 1 {
-            
+            let idValue = apiSearchFoods[indexPath.row].idValue
+            self.datacontroller.saveUSDAItemForId(idValue, json: self.jsonResponse)
         }
         else {
             
         }
     }
 
-    // Mark - UISearchResultsUpdating
+    // MARK: - UISearchResultsUpdating
     
     func updateSearchResultsForSearchController(searchController: UISearchController) {
         let searchString = searchController.searchBar.text
@@ -127,34 +137,41 @@ class ViewController: UIViewController, UITableViewDataSource, UITableViewDelega
     }
     
     func filterContentForSearch (searchText:String, scope:Int) {
-        
-        self.filteredSuggestedSearchFoods = self.suggestedSearchFoods.filter({ (food:String) -> Bool in
+        if scope == 0 {
+            self.filteredSuggestedSearchFoods = self.suggestedSearchFoods.filter({ (food:String) -> Bool in
             var foodMatch = food.rangeOfString(searchText)
             return foodMatch != nil
-        })
+            })
+        }
+        else if scope == 2 {
+            self.filteredFavoritedUSDAItems = self.favoritedUSDAItems.filter({ (item: USDAItem) -> Bool in
+                var stringMatch = item.name.rangeOfString(searchText)
+                return stringMatch != nil
+            })
+        }
     }
     
-    // Mark - UISearchBarDelegate
+    // MARK: - UISearchBarDelegate
     
     func searchBarSearchButtonClicked(searchBar: UISearchBar) {
         self.searchController.searchBar.selectedScopeButtonIndex = 1
         makeRequest(searchBar.text)
     }
     
+    func searchBar(searchBar: UISearchBar, selectedScopeButtonIndexDidChange selectedScope: Int) {
+        
+        if selectedScope == 2 {
+            requestFavoritedUSDAItems()
+        }
+        self.tableView.reloadData()
+    }
+    
     func makeRequest (searchString: String) {
-//       let url = NSURL(string: "https://api.nutritionix.com/v1_1/search/\(searchString)?results=0%3A20&cal_min=0&cal_max=50000&fields=item_name%2Cbrand_name%2Citem_id%2Cbrand_id&appId=\(kAppId)&appKey=\(kAppKey)")
-//       let task = NSURLSession.sharedSession().dataTaskWithURL(url!, completionHandler: { (data, response, error) -> Void in
-//            var stringData = NSString(data: data, encoding: NSUTF8StringEncoding)
-//           
-//            print(stringData)
-//            print(response)
-//        })
-//        task.resume()
-//    }
         
         var request = NSMutableURLRequest(URL: NSURL(string:"https://api.nutritionix.com/v1_1/search/")!)
         let session = NSURLSession.sharedSession()
         request.HTTPMethod = "POST"
+        
         
         var params = [
             "appId":kAppId,
@@ -166,18 +183,19 @@ class ViewController: UIViewController, UITableViewDataSource, UITableViewDelega
             "filters":["exists": ["usda_fields": true]]]
         
         var error:NSError?
+        
         request.HTTPBody = NSJSONSerialization.dataWithJSONObject(params, options: nil, error: &error)
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.addValue("application/jason", forHTTPHeaderField: "Accept")
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+        
         var task = session.dataTaskWithRequest(request, completionHandler: { (data, response, err) -> Void in
-            
+//            
             var stringData = NSString(data: data, encoding: NSUTF8StringEncoding)
             print(stringData)
             var conversionError: NSError?
             var jsonDictionary = NSJSONSerialization.JSONObjectWithData(data, options: .MutableLeaves, error: &error) as? NSDictionary
             
-            println(jsonDictionary)
-        
+            println(jsonDictionary)        
             if conversionError != nil {
                 print(conversionError!.localizedDescription)
                 let errorString = NSString(data: data, encoding: NSUTF8StringEncoding)
@@ -199,5 +217,16 @@ class ViewController: UIViewController, UITableViewDataSource, UITableViewDelega
         })
         task.resume()
     }
+    
+    // MARK: Set up coreData
+    
+    func requestFavoritedUSDAItems () {
+        let fetchRequest = NSFetchRequest(entityName: "USDAItem")
+        let appDelegate = (UIApplication.sharedApplication().delegate as AppDelegate)
+        let managedObjectContext = appDelegate.managedObjectContext
+        self.favoritedUSDAItems = managedObjectContext?.executeFetchRequest(fetchRequest, error: nil) as [USDAItem]
+        
+    }
+    
 }
 
