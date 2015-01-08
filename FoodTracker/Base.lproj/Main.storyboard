@@ -84,7 +84,11 @@
                         </constraints>
                     </view>
                     <navigationItem key="navigationItem" id="rtl-Eu-dQu">
-                        <barButtonItem key="rightBarButtonItem" title="Eat It" id="0yp-Zq-EYY"/>
+                        <barButtonItem key="rightBarButtonItem" title="Eat It" id="0yp-Zq-EYY">
+                            <connections>
+                                <action selector="eatItButtonPressed:" destination="mAv-FG-NZP" id="6Me-RT-30W"/>
+                            </connections>
+                        </barButtonItem>
                     </navigationItem>
                     <connections>
                         <outlet property="eatItButtonPressed" destination="0yp-Zq-EYY" id="0OT-FA-75a"/>

@@ -10,6 +10,8 @@ import Foundation
 import UIkit
 import CoreData
 
+let kUSDAItemCompleted = "USDAItemInstanceComplete"
+
 class DataController {
     
     class func jsonAsUSDAIdAndSearchResults (json:NSDictionary) -> [(name: String, idValue:String)] {
@@ -107,7 +109,7 @@ class DataController {
                                 
                                 if usdaFieldsDictionary["FAT"] != nil {
                                     let fatTotalDictionary = usdaFieldsDictionary["FAT"]! as NSDictionary
-                                    if fatTotalDictionary["Value"] != nil {
+                                    if fatTotalDictionary["value"] != nil {
                                         let fatTotalValue:AnyObject = fatTotalDictionary["value"]!
                                         usdaItem.fatTotal = "\(fatTotalValue)"
                                     }
@@ -174,7 +176,8 @@ class DataController {
                                 }
                                 
                                 (UIApplication.sharedApplication().delegate as AppDelegate).saveContext()
-
+                                
+                                NSNotificationCenter.defaultCenter().postNotificationName(kUSDAItemCompleted, object: usdaItem)
                             }
                         }
                     }
